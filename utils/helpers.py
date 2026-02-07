@@ -3,20 +3,41 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 
-def load_dotenv_if_present(path: str = ".env") -> None:
+def _repo_root_from_here() -> Path:
+    # utils/helpers.py -> repo root is 2 levels up
+    return Path(__file__).resolve().parents[1]
+
+
+def find_dotenv_path() -> Optional[str]:
+    """
+    Prefer a repo-root .env (next to app.py), then fall back to CWD .env.
+    """
+    repo_env = _repo_root_from_here() / ".env"
+    if repo_env.exists():
+        return str(repo_env)
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.exists():
+        return str(cwd_env)
+    return None
+
+
+def load_dotenv_if_present(path: Optional[str] = None) -> bool:
     """
     Minimal .env loader (KEY=VALUE).
     - Ignores comments and blank lines
     - Does not override existing environment variables
     """
-    if not os.path.exists(path):
-        return
+    if path is None:
+        path = find_dotenv_path()
+    if not path or not os.path.exists(path):
+        return False
 
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -30,7 +51,30 @@ def load_dotenv_if_present(path: str = ".env") -> None:
                 if k and k not in os.environ:
                     os.environ[k] = v
     except OSError:
-        return
+        return False
+    return True
+
+
+def parse_dotenv(path: str) -> Dict[str, str]:
+    """
+    Parse a .env file into a dict without mutating os.environ.
+    Supports simple KEY=VALUE lines (no export, no multiline).
+    """
+    out: Dict[str, str] = {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for raw in f.readlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip("'").strip('"')
+                if k:
+                    out[k] = v
+    except OSError:
+        return {}
+    return out
 
 
 def detect_text_encoding(data: bytes) -> str:
@@ -175,10 +219,24 @@ class ApiConfig:
 
 
 def load_api_config() -> ApiConfig:
-    load_dotenv_if_present()
-    api_key = os.environ.get("OPENAI_API_KEY")
-    base_url = os.environ.get("OPENAI_BASE_URL")
-    model = os.environ.get("DATAPILOT_MODEL") or os.environ.get("OPENAI_MODEL")
+    dotenv_path = find_dotenv_path()
+    dotenv_vals: Dict[str, str] = {}
+    if dotenv_path:
+        dotenv_vals = parse_dotenv(dotenv_path)
+        # UI diagnostics without exposing secrets.
+        os.environ["DATAPILOT_DOTENV_PATH"] = dotenv_path
+
+    def _pick(*keys: str) -> Optional[str]:
+        for k in keys:
+            v = (dotenv_vals.get(k) or os.environ.get(k) or "").strip()
+            if v:
+                return v
+        return None
+
+    # Prefer OpenAI-compatible env var names, but support GROQ_* as a convenience.
+    api_key = _pick("OPENAI_API_KEY", "GROQ_API_KEY")
+    base_url = _pick("OPENAI_BASE_URL", "GROQ_BASE_URL")
+    model = _pick("DATAPILOT_MODEL", "OPENAI_MODEL")
 
     # Convenience: if the user provided a Groq key but forgot the base URL, default it.
     if api_key and api_key.startswith("gsk_") and not base_url:
@@ -190,6 +248,7 @@ def load_api_config() -> ApiConfig:
             model = "llama-3.3-70b-versatile"
         else:
             model = "gpt-4o-mini"
+    model = (model or "").strip() or "gpt-4o-mini"
 
     return ApiConfig(
         provider="openai_compatible",

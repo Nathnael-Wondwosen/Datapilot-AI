@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 import pandas as pd
@@ -27,18 +28,23 @@ api = load_api_config()
 with st.sidebar:
     st.header("Upload")
     up = st.file_uploader("CSV or Excel (.csv, .xlsx)", type=["csv", "xlsx", "xls", "xlsm"])
-    st.divider()
-    st.subheader("AI (optional)")
-    if api.api_key:
-        st.success("OPENAI_API_KEY detected")
+
+    # Minimal status (AI config UI is intentionally hidden).
+    dotenv_path = os.environ.get("DATAPILOT_DOTENV_PATH")
+    if dotenv_path:
+        st.caption(f"Env: loaded ({dotenv_path})")
     else:
-        st.info("Set OPENAI_API_KEY in .env to enable AI insights + full chat.")
+        st.caption("Env: not loaded (.env not found)")
 
-    base_url = st.text_input("Base URL (OpenAI-compatible)", value=api.base_url or "")
-    if base_url.strip():
-        st.caption("Example (Groq): https://api.groq.com/openai/v1")
-
-    model = st.text_input("Model", value=api.model)
+    if api.api_key:
+        if api.base_url and "groq.com" in api.base_url.lower():
+            st.caption("AI: enabled (Groq)")
+        elif api.base_url:
+            st.caption("AI: enabled (OpenAI-compatible)")
+        else:
+            st.caption("AI: enabled (base URL not set)")
+    else:
+        st.caption("AI: disabled (set .env to enable)")
 
 
 def _file_type(name: str) -> str:
@@ -47,12 +53,8 @@ def _file_type(name: str) -> str:
 
 
 def _effective_api() -> ApiConfig:
-    return ApiConfig(
-        provider=api.provider,
-        api_key=api.api_key,
-        base_url=base_url.strip() or None,
-        model=model.strip() or api.model,
-    )
+    # Always use env-based config (no runtime overrides) as requested.
+    return api
 
 
 if not up:
