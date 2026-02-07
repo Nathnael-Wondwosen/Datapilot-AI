@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import html as _html
 from typing import Optional
 
 import pandas as pd
@@ -13,7 +14,7 @@ from core.kpis import compute_kpis
 from core.loader import list_excel_sheets, load_tabular
 from core.profiler import profile_as_dict, profile_df
 from core.quality import compute_quality
-from core.report import build_markdown_report
+from core.report import build_html_report, build_markdown_report
 from core.visualizer import build_visuals
 from utils.helpers import ApiConfig, load_api_config
 
@@ -29,22 +30,7 @@ with st.sidebar:
     st.header("Upload")
     up = st.file_uploader("CSV or Excel (.csv, .xlsx)", type=["csv", "xlsx", "xls", "xlsm"])
 
-    # Minimal status (AI config UI is intentionally hidden).
-    dotenv_path = os.environ.get("DATAPILOT_DOTENV_PATH")
-    if dotenv_path:
-        st.caption(f"Env: loaded ({dotenv_path})")
-    else:
-        st.caption("Env: not loaded (.env not found)")
-
-    if api.api_key:
-        if api.base_url and "groq.com" in api.base_url.lower():
-            st.caption("AI: enabled (Groq)")
-        elif api.base_url:
-            st.caption("AI: enabled (OpenAI-compatible)")
-        else:
-            st.caption("AI: enabled (base URL not set)")
-    else:
-        st.caption("AI: disabled (set .env to enable)")
+    # AI config UI is intentionally hidden; no sidebar status text.
 
 
 def _file_type(name: str) -> str:
@@ -57,25 +43,36 @@ def _effective_api() -> ApiConfig:
     return api
 
 
+use_sample = False
 if not up:
     st.markdown("### Quick start")
-    st.markdown("Upload a file, or use the included sample at `data/samples/sample_sales.csv`.")
-    st.stop()
+    st.markdown("Upload a file, or load the included sample dataset.")
+    if st.button("Use sample dataset", type="primary"):
+        use_sample = True
+    else:
+        st.stop()
 
-file_bytes = up.getvalue()
-ft = _file_type(up.name)
+if use_sample:
+    df = pd.read_csv("data/samples/sample_sales.csv")
+    load = type("Load", (), {"source_name": "data/samples/sample_sales.csv"})()
+    ft = "csv"
+    file_bytes = b""
+else:
+    file_bytes = up.getvalue()
+    ft = _file_type(up.name)
 
-sheet: Optional[str] = None
-if ft in ("xlsx", "xls", "xlsm"):
-    try:
-        sheets = list_excel_sheets(file_bytes)
-        if sheets:
-            sheet = st.sidebar.selectbox("Sheet", options=sheets, index=0)
-    except Exception:
-        st.sidebar.warning("Could not read sheet list; attempting default sheet.")
+if not use_sample:
+    sheet: Optional[str] = None
+    if ft in ("xlsx", "xls", "xlsm"):
+        try:
+            sheets = list_excel_sheets(file_bytes)
+            if sheets:
+                sheet = st.sidebar.selectbox("Sheet", options=sheets, index=0)
+        except Exception:
+            st.sidebar.warning("Could not read sheet list; attempting default sheet.")
 
-load = load_tabular(file_bytes=file_bytes, source_name=up.name, file_type=ft, sheet_name=sheet)
-df = load.df
+    load = load_tabular(file_bytes=file_bytes, source_name=up.name, file_type=ft, sheet_name=sheet)
+    df = load.df
 
 if df is None or df.empty:
     st.error("No data found in the uploaded file.")
@@ -188,6 +185,100 @@ with tab_chat:
     with right:
         if st.button("Reset chat", use_container_width=True):
             st.session_state.pop("chat_messages", None)
+            st.session_state.pop("dp_stage", None)
+            st.session_state.pop("dp_prompt", None)
+
+    st.markdown(
+        """
+        <style>
+          /* Chat bubbles (WhatsApp/Telegram-ish) */
+          .dp-chat {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 6px 4px;
+          }
+          .dp-bubble {
+            max-width: 78%;
+            padding: 10px 12px;
+            border-radius: 16px;
+            line-height: 1.35;
+            border: 1px solid rgba(49, 51, 63, 0.12);
+            box-shadow: 0 1px 0 rgba(0,0,0,0.03);
+            word-wrap: break-word;
+            overflow-wrap: anywhere;
+          }
+          .dp-bubble p {
+            margin: 0;
+          }
+          .dp-bubble p + p {
+            margin-top: 8px;
+          }
+          .dp-bubble ul {
+            margin: 8px 0 0 18px;
+          }
+          .dp-bubble pre {
+            margin: 8px 0 0;
+            padding: 10px;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.06);
+            border: 1px solid rgba(49, 51, 63, 0.12);
+            overflow: auto;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.9em;
+          }
+          .dp-assistant {
+            align-self: flex-start;
+            background: rgba(49, 51, 63, 0.04);
+          }
+          .dp-user {
+            align-self: flex-end;
+            margin-left: auto;
+            background: rgba(46, 204, 113, 0.18);
+            border-color: rgba(46, 204, 113, 0.35);
+          }
+
+          /* Status banner (above input) */
+          .dp-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(49, 51, 63, 0.12);
+            background: linear-gradient(90deg, rgba(98, 214, 255, 0.18), rgba(46, 204, 113, 0.12));
+            color: rgba(49, 51, 63, 0.85);
+          }
+          .dp-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(49, 51, 63, 0.55);
+            animation: dp-bounce 1.1s infinite ease-in-out;
+          }
+          .dp-dot:nth-child(2) { animation-delay: 0.15s; opacity: 0.85; }
+          .dp-dot:nth-child(3) { animation-delay: 0.30s; opacity: 0.70; }
+          @keyframes dp-bounce {
+            0%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-5px); }
+          }
+
+          /* Make chat input look more like a messenger bar */
+          div[data-testid="stChatInput"] {
+            border-top: 1px solid rgba(49, 51, 63, 0.12);
+            padding-top: 10px;
+          }
+          div[data-testid="stChatInput"] textarea {
+            border-radius: 14px !important;
+            border: 1px solid rgba(49, 51, 63, 0.18) !important;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.06);
+            padding: 12px 14px !important;
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if "chat_messages" not in st.session_state:
         st.session_state.chat_messages = [
@@ -198,6 +289,101 @@ with tab_chat:
             }
         ]
 
+    if "dp_stage" not in st.session_state:
+        st.session_state.dp_stage = None  # None | "render" | "compute"
+    if "dp_prompt" not in st.session_state:
+        st.session_state.dp_prompt = None
+
+    def _format_message_html(text: str) -> str:
+        """
+        Minimal markdown-to-HTML for chat bubbles (safe).
+        - escapes HTML
+        - supports bullet lists and fenced code blocks
+        """
+        s = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+        out: list[str] = []
+
+        in_code = False
+        code_lines: list[str] = []
+        buf: list[str] = []
+        ul_open = False
+
+        def flush_paragraph() -> None:
+            nonlocal buf
+            if not buf:
+                return
+            p = _html.escape("\n".join(buf))
+            p = p.replace("\n", "<br/>")
+            out.append(f"<p>{p}</p>")
+            buf = []
+
+        def open_ul() -> None:
+            nonlocal ul_open
+            if not ul_open:
+                flush_paragraph()
+                out.append("<ul>")
+                ul_open = True
+
+        def close_ul() -> None:
+            nonlocal ul_open
+            if ul_open:
+                out.append("</ul>")
+                ul_open = False
+
+        for line in s.split("\n"):
+            if line.strip().startswith("```"):
+                if not in_code:
+                    close_ul()
+                    flush_paragraph()
+                    in_code = True
+                    code_lines = []
+                else:
+                    code = _html.escape("\n".join(code_lines))
+                    out.append(f"<pre><code>{code}</code></pre>")
+                    in_code = False
+                continue
+
+            if in_code:
+                code_lines.append(line)
+                continue
+
+            bullet = line.lstrip().startswith(("- ", "* "))
+            if bullet:
+                open_ul()
+                item = line.lstrip()[2:]
+                out.append(f"<li>{_html.escape(item)}</li>")
+                continue
+
+            if line.strip() == "":
+                close_ul()
+                flush_paragraph()
+                continue
+
+            close_ul()
+            buf.append(line)
+
+        close_ul()
+        flush_paragraph()
+        return "".join(out) if out else "<p></p>"
+
+    def _render_chat(messages: list[dict]) -> None:
+        bubbles: list[str] = []
+        for m in messages[-30:]:
+            role = m.get("role")
+            content = m.get("content", "")
+            cls = "dp-user" if role == "user" else "dp-assistant"
+            body = _format_message_html(str(content))
+            bubbles.append(f'<div class="dp-bubble {cls}">{body}</div>')
+        st.markdown('<div class="dp-chat">' + "".join(bubbles) + "</div>", unsafe_allow_html=True)
+
+    def _set_pending_prompt(p: str) -> None:
+        p = (p or "").strip()
+        if not p:
+            return
+        st.session_state.dp_prompt = p
+        st.session_state.dp_stage = "render"
+        st.rerun()
+
     # Suggested prompts keep the UX professional and reduce user friction.
     sug_cols = st.columns(3)
     suggestions = [
@@ -207,34 +393,50 @@ with tab_chat:
     ]
     for i, s in enumerate(suggestions):
         if sug_cols[i].button(s, use_container_width=True):
-            st.session_state.chat_messages.append({"role": "user", "content": s})
+            _set_pending_prompt(s)
 
     st.divider()
 
-    # Render messages
-    for m in st.session_state.chat_messages[-20:]:
-        with st.chat_message(m["role"]):
-            st.write(m["content"])
+    _render_chat(st.session_state.chat_messages)
+
+    # Two-phase send to keep the input pinned and show a nicer status above it.
+    # Phase 1 (render): append user message + typing bubble, then rerun so UI updates before compute.
+    if st.session_state.dp_stage == "render" and st.session_state.dp_prompt:
+        p = st.session_state.dp_prompt
+        st.session_state.chat_messages.append({"role": "user", "content": p})
+        st.session_state.chat_messages.append({"role": "assistant", "content": "Typing…"})
+        st.session_state.dp_stage = "compute"
+        st.rerun()
+
+    status_slot = st.empty()
+    if st.session_state.dp_stage == "compute" and st.session_state.dp_prompt:
+        status_slot.markdown(
+            """
+            <div class="dp-status">
+              <span>Analyzing</span>
+              <span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        p = st.session_state.dp_prompt
+        ans = answer_question(
+            api=_effective_api(),
+            question=p,
+            df=df,
+            profile_dict=profile_dict,
+            kpis_text=kpis_text,
+            history=st.session_state.chat_messages,
+        )
+        st.session_state.chat_messages[-1]["content"] = ans
+        st.session_state.dp_prompt = None
+        st.session_state.dp_stage = None
+        st.rerun()
 
     # Input at the bottom
     prompt = st.chat_input("Message DataPilot…")
     if prompt:
-        st.session_state.chat_messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.write(prompt)
-
-        with st.chat_message("assistant"):
-            with st.spinner("Analyzing…"):
-                ans = answer_question(
-                    api=_effective_api(),
-                    question=prompt,
-                    df=df,
-                    profile_dict=profile_dict,
-                    kpis_text=kpis_text,
-                    history=st.session_state.chat_messages,
-                )
-            st.write(ans)
-        st.session_state.chat_messages.append({"role": "assistant", "content": ans})
+        _set_pending_prompt(prompt)
 
 with tab_report:
     st.markdown("Generate a simple Markdown report you can download and share.")
@@ -260,5 +462,14 @@ with tab_report:
     )
 
     st.download_button("Download report.md", data=md.encode("utf-8"), file_name="report.md", mime="text/markdown")
+    html = build_html_report(
+        title=report_title,
+        dataset_name=load.source_name,
+        profile_dict=profile_dict,
+        kpis_text=kpis_text,
+        insights=base_ins,
+        quality_notes=quality_notes,
+    )
+    st.download_button("Download report.html", data=html.encode("utf-8"), file_name="report.html", mime="text/html")
     with st.expander("Preview"):
         st.markdown(md)

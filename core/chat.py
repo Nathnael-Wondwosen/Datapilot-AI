@@ -162,20 +162,21 @@ def answer_question(
                 monthly = tmp.groupby("_m", as_index=False)[target].sum().tail(12)
                 extra["recent_monthly"] = monthly.to_dict(orient="records")
 
-    sample = df.head(15).to_dict(orient="records")
+    sample = df.head(8).to_dict(orient="records")
     context = (
         "Use ONLY the provided dataset context. Do not invent values. "
-        "If you cannot answer from this context, say exactly what is missing and propose a specific next step.\n\n"
+        "If you cannot answer from this context, say exactly what is missing and propose a specific next step.\n"
+        "Prefer short, direct answers. Use bullets when helpful. If asked for a number, lead with the number.\n\n"
         f"Schema (col -> role): {profile_dict.get('roles', {})}\n\n"
         f"KPIs:\n{kpis_text}\n\n"
         f"Extra aggregates (if available): {extra}\n\n"
-        f"Sample rows (first 15): {sample}\n"
+        f"Sample rows (first 8): {sample}\n"
     )
 
     # Conversation memory: include a small window of prior turns.
     convo: List[dict] = []
     if history:
-        for m in history[-12:]:
+        for m in history[-8:]:
             role = m.get("role")
             content = m.get("content")
             if role in ("user", "assistant") and isinstance(content, str) and content.strip():
@@ -185,12 +186,16 @@ def answer_question(
         resp = client.chat.completions.create(
             model=api.model,
             messages=[
-                {"role": "system", "content": "You are DataPilot, a careful data analyst. Keep answers concise and professional."},
+                {
+                    "role": "system",
+                    "content": "You are DataPilot, a careful data analyst. Keep answers concise, professional, and fast. Do not hallucinate.",
+                },
                 {"role": "system", "content": context},
                 *convo,
                 {"role": "user", "content": q},
             ],
-            temperature=0.2,
+            temperature=0.1,
+            max_tokens=350,
         )
         return (resp.choices[0].message.content or "").strip() or "No response."
     except Exception as e:
