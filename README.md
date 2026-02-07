@@ -1,0 +1,124 @@
+# DataPilot AI
+Universal CSV and Excel Intelligence Platform
+
+Upload any CSV or Excel file. Get instant insights, visual analytics, and AI-powered explanations.
+
+## Overview
+
+DataPilot AI is a Python-based intelligent analytics platform that automatically understands any tabular dataset (CSV or Excel) and transforms it into meaningful visual insights and plain-English explanations.
+
+It is designed as a first-analysis tool for businesses and individuals before moving to complex BI tools like Power BI or Tableau.
+
+No templates.
+No predefined schemas.
+Just upload your data and explore.
+
+## Why DataPilot AI?
+
+Most organizations store their data in spreadsheets, but:
+
+- Excel is manual and time-consuming
+- BI tools are expensive and complex
+- Analysts are overloaded
+- Managers want answers, not tables
+
+DataPilot AI bridges the gap between raw spreadsheets and data-driven decisions.
+
+## Supported Data
+
+Minimum requirements:
+
+- CSV or XLSX format
+- First row contains column headers
+- Rows represent records
+
+## Features
+
+- Universal File Upload (CSV and Excel, encoding detection, sheet selection, preview)
+- Automatic Data Profiling (types, missing values, summaries)
+- Smart Visualization Engine (time series, comparisons, distributions, correlations)
+- KPI and Metrics Generation
+- AI Insight Generator (optional via OpenAI API key)
+- Chat With Your Data (optional via OpenAI API key)
+- Forecasting (simple, explainable models)
+- Data Quality and Anomaly Detection
+- Automated Report Generation (Markdown export)
+
+## Tech Stack
+
+- Python
+- Streamlit
+- Pandas
+- NumPy
+- Plotly
+- Scikit-learn
+- OpenAI API (optional)
+
+## Project Structure
+
+```
+Datapilot-AI/
+  app.py
+  requirements.txt
+  README.md
+  core/
+    loader.py
+    profiler.py
+    visualizer.py
+    kpis.py
+    insights.py
+    forecasting.py
+    chat.py
+    quality.py
+    report.py
+  data/
+    samples/
+  utils/
+    helpers.py
+```
+
+## Getting Started
+
+1. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+2. Run the app (simple)
+
+One-time install (creates the `datapilot` command):
+
+```bash
+pip install -e .
+```
+
+Then run:
+
+```bash
+datapilot
+```
+
+Alternative (no install):
+
+```bash
+python -m datapilot
+```
+
+3. (Optional) Create `.env` for AI features
+
+```env
+OPENAI_API_KEY=your_api_key_here
+# Groq (free, OpenAI-compatible):
+OPENAI_BASE_URL=https://api.groq.com/openai/v1
+DATAPILOT_MODEL=llama-3.3-70b-versatile
+
+# If you use OpenAI instead, you can omit OPENAI_BASE_URL and set OPENAI_MODEL:
+# OPENAI_MODEL=gpt-4o-mini
+```
+
+4. Run the app (direct Streamlit)
+
+```bash
+streamlit run app.py
+```
