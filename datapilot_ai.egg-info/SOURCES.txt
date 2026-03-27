@@ -2,6 +2,7 @@ README.md
 pyproject.toml
 core/__init__.py
 core/chat.py
+core/edit_copilot.py
 core/forecasting.py
 core/insights.py
 core/kpis.py
